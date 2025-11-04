@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Inventory Manager</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for better visibility */
+        .inventory-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .inventory-list::-webkit-scrollbar-thumb {
+            background-color: #6366f1; /* Indigo-500 */
+            border-radius: 4px;
+        }
+        .inventory-list::-webkit-scrollbar-track {
+            background: #f1f5f9; /* Slate-100 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans antialiased flex justify-center py-10">
+
+    <div id="app-container" class="w-full max-w-4xl p-6 bg-white shadow-2xl rounded-xl">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-indigo-700">StockPilot Inventory</h1>
+            <p class="text-gray-500 mt-1">Real-time inventory management powered by Firestore</p>
+        </header>
+
+        <!-- User Status and Buttons -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 p-3 bg-indigo-50 border-l-4 border-indigo-500 rounded-md shadow-sm text-sm text-gray-700">
+            <div id="auth-status" class="flex items-center space-x-3">
+                <div id="user-avatar" class="w-8 h-8 rounded-full bg-indigo-300 flex items-center justify-center text-white font-bold text-sm hidden">?</div>
+                <div id="status-text">Loading user status...</div>
+            </div>
+            <div id="auth-buttons" class="mt-3 md:mt-0">
+                <button id="google-sign-in-btn" class="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition duration-150 flex items-center hidden">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 48 48"><path d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 8.036 3.078l6.697-6.697C34.406 4.92 29.518 3 24 3 12.955 3 3 12.955 3 24s9.955 21 21 21c11.045 0 20-8.955 20-21z" clip-rule="evenodd" fill-rule="evenodd" fill="#FFC107"/><path d="M6.306 14.693l6.574 4.876C14.735 17.828 17.5 16 20.303 16c2.036 0 3.955.703 5.464 1.905l6.697-6.697C29.5 7.425 24.8 5 18 5 12.56 5 7.747 7.032 4.34 10.158z" fill="#FF3D00"/><path d="M41.562 25.126c-.722-1.99-1.92-3.87-3.468-5.337L29.742 24l3.542 3.327c1.693 1.588 2.87 3.565 3.468 5.61z" fill="#4CAF50"/><path d="M24 45c5.187 0 9.873-1.87 13.51-5.048l-6.697-6.697C28.275 35.875 26.155 37 24 37c-5.202 0-9.627-3.784-11.303-8.834L6.306 33.15c3.415 3.126 8.228 5.158 13.694 5.158 5.23 0 9.805-1.745 13.51-5.048z" fill="#1976D2"/></svg>
+                    Sign in with Google
+                </button>
+                <button id="sign-out-btn" class="px-4 py-2 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600 transition duration-150 hidden">Sign Out</button>
+            </div>
+        </div>
+
+        <!-- Add Item Form -->
+        <div class="bg-white p-6 mb-8 border border-gray-200 rounded-lg shadow-md">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800">Add New Item</h2>
+            <form id="add-item-form" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <input type="text" id="item-name" placeholder="Item Name (e.g., Widget X)" required class="col-span-2 p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                <input type="number" id="item-quantity" placeholder="Quantity" required min="1" value="1" class="p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+                <button type="submit" id="submit-button" class="col-span-1 p-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition duration-150 disabled:bg-indigo-300" disabled>Add Item</button>
+            </form>
+        </div>
+
+        <!-- Inventory List -->
+        <div class="bg-gray-50 p-6 rounded-lg border border-gray-200 shadow-inner">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800">Current Stock (<span id="item-count">0</span> items)</h2>
+            
+            <!-- NEW SEARCH INPUT -->
+            <div class="mb-4">
+                <input type="text" id="search-input" placeholder="Search items by name..." 
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+
+            <div id="inventory-list" class="inventory-list max-h-96 overflow-y-auto space-y-3">
+                <p id="loading-message" class="text-center text-gray-500">Connecting to database...</p>
+                <!-- Items will be injected here -->
+            </div>
+            <p id="empty-message" class="hidden text-center text-gray-500 mt-4 p-4 border border-dashed rounded-lg">Your inventory is empty! Add an item above.</p>
+        </div>
+
+        <!-- Custom Message Box for errors/success -->
+        <div id="message-box" class="fixed bottom-5 right-5 w-80 p-4 rounded-lg text-white shadow-xl hidden transition-opacity duration-300 opacity-0 z-50"></div>
+    </div>
+
+    <!-- Firebase SDKs and Application Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, addDoc, onSnapshot, updateDoc, deleteDoc, query, orderBy, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+
+        // Enable Firestore Debug Logging
+        setLogLevel('debug');
+
+        // --- USER-DEFINED FIREBASE CONFIGURATION ---
+        const USER_PROVIDED_FIREBASE_CONFIG = {
+            apiKey: "AIzaSyA1XHyEZOqPgWycP11vITgD1QguaS8enPI",
+            authDomain: "inventorymanagment-3ed5d.firebaseapp.com",
+            projectId: "inventorymanagment-3ed5d",
+            storageBucket: "inventorymanagment-3ed5d.firebasestorage.app",
+            messagingSenderId: "134250017727",
+            appId: "1:134250017727:web:5820847050857ca4ffe70a",
+            measurementId: "G-WPSXW057JQ"
+        };
+        
+        // --- GLOBAL VARIABLES (Prioritizing User/Environment Configs) ---
+        // If the environment provides a config, use it. Otherwise, use the user's hardcoded config.
+        const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : USER_PROVIDED_FIREBASE_CONFIG;
+        
+        // Use the environment's app ID, falling back to the project ID from the config
+        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app, auth, db, userId = null;
+        let isAuthReady = false;
+        
+        // --- Data Stores ---
+        let inventoryItems = []; // Stores the full, unfiltered list from Firestore
+        let searchTerm = ''; // Stores the current search query
+        
+        // --- AUTH PROVIDER ---
+        const googleProvider = new GoogleAuthProvider();
+
+        // --- UI Elements ---
+        const authStatusEl = document.getElementById('status-text');
+        const userAvatarEl = document.getElementById('user-avatar');
+        const addItemForm = document.getElementById('add-item-form');
+        const inventoryListEl = document.getElementById('inventory-list');
+        const loadingMessageEl = document.getElementById('loading-message');
+        const emptyMessageEl = document.getElementById('empty-message');
+        const itemCountEl = document.getElementById('item-count');
+        const submitButton = document.getElementById('submit-button');
+        const messageBoxEl = document.getElementById('message-box');
+        const googleSignInBtn = document.getElementById('google-sign-in-btn');
+        const signOutBtn = document.getElementById('sign-out-btn');
+        const searchInputEl = document.getElementById('search-input'); // NEW
+
+        /**
+         * Shows a transient message box for feedback (success/error).
+         * @param {string} message - The message to display.
+         * @param {string} type - 'success' or 'error'.
+         */
+        const showMessage = (message, type = 'success') => {
+            messageBoxEl.textContent = message;
+            messageBoxEl.className = 'fixed bottom-5 right-5 w-80 p-4 rounded-lg text-white shadow-xl transition-opacity duration-300 opacity-100 z-50';
+
+            if (type === 'success') {
+                messageBoxEl.classList.add('bg-green-600');
+            } else {
+                messageBoxEl.classList.add('bg-red-600');
+            }
+
+            messageBoxEl.classList.remove('hidden');
+
+            setTimeout(() => {
+                messageBoxEl.classList.add('opacity-0');
+                messageBoxEl.classList.remove('opacity-100');
+                setTimeout(() => {
+                    messageBoxEl.classList.add('hidden');
+                }, 300);
+            }, 3000);
+        };
+
+        /**
+         * Updates the UI based on the authentication state.
+         * @param {Object} user - The authenticated Firebase user object or null.
+         */
+        const updateUIForAuthState = (user) => {
+            if (user) {
+                // User is signed in
+                userId = user.uid;
+                isAuthReady = true;
+
+                // Determine display name
+                const displayName = user.displayName || (user.email ? user.email.split('@')[0] : 'Authenticated User');
+                const avatarText = displayName.charAt(0).toUpperCase();
+
+                authStatusEl.innerHTML = `Signed in as <span class="font-bold text-indigo-800">${displayName}</span>. ID: <span class="font-mono text-xs break-all">${userId}</span>.`;
+                userAvatarEl.textContent = avatarText;
+                userAvatarEl.classList.remove('hidden');
+
+                // Show/Hide buttons and form elements
+                googleSignInBtn.classList.add('hidden');
+                signOutBtn.classList.remove('hidden');
+                submitButton.disabled = false;
+                loadingMessageEl.classList.add('hidden');
+
+                setupInventoryListener();
+            } else {
+                // User is signed out
+                userId = null;
+                isAuthReady = false;
+
+                authStatusEl.innerHTML = `Please sign in to manage your inventory.`;
+                userAvatarEl.classList.add('hidden');
+
+                // Show/Hide buttons and form elements
+                googleSignInBtn.classList.remove('hidden');
+                signOutBtn.classList.add('hidden');
+                submitButton.disabled = true;
+                inventoryListEl.innerHTML = `<p class="text-center text-gray-500">Sign in to view your inventory.</p>`;
+                loadingMessageEl.classList.add('hidden');
+            }
+        };
+
+        /**
+         * Initializes Firebase and sets up the Auth State Listener.
+         */
+        const initializeFirebase = async () => {
+            try {
+                // 1. Initialize Firebase App
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // 2. Initial Sign-in with Custom Token (Canvas Requirement)
+                // This ensures the Canvas environment user is authenticated first.
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken).catch(e => {
+                        console.warn("Canvas token sign-in failed (will proceed with OAuth):", e.message);
+                        // If token sign-in fails, allow onAuthStateChanged to handle the state (which might be null)
+                    });
+                }
+                
+                // 3. Handle Authentication State changes
+                onAuthStateChanged(auth, (user) => {
+                    updateUIForAuthState(user);
+                });
+
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+                authStatusEl.innerHTML = `<span class="text-red-600 font-bold">Error:</span> Could not initialize Firebase. Check console for details.`;
+            }
+        };
+
+        /**
+         * Signs the user in using Google sign-in popup.
+         */
+        const signInWithGoogle = async () => {
+            try {
+                await signInWithPopup(auth, googleProvider);
+                // The onAuthStateChanged listener handles the rest of the UI update
+                showMessage("Signed in successfully with Google!", 'success');
+            } catch (error) {
+                console.error("Google Sign-In failed:", error);
+                showMessage(`Google Sign-In failed: ${error.message}`, 'error');
+            }
+        };
+
+        /**
+         * Signs the user out.
+         */
+        const signOutUser = async () => {
+            try {
+                await signOut(auth);
+                showMessage("Signed out successfully.", 'success');
+            } catch (error) {
+                console.error("Sign Out failed:", error);
+                showMessage(`Sign Out failed: ${error.message}`, 'error');
+            }
+        };
+
+
+        /**
+         * Gets the Firestore collection path for the user's private inventory.
+         */
+        const getInventoryCollectionRef = () => {
+            if (!db || !userId) {
+                console.error("Database or User ID not ready.");
+                return null;
+            }
+            // Private data path: /artifacts/{appId}/users/{userId}/inventory
+            return collection(db, `artifacts/${appId}/users/${userId}/inventory`);
+        };
+
+        /**
+         * Adds a new item to the Firestore database.
+         * @param {Event} e - The form submit event.
+         */
+        const addItem = async (e) => {
+            e.preventDefault();
+            if (!isAuthReady) return showMessage("Please sign in to add items.", 'error');
+
+            const nameInput = document.getElementById('item-name');
+            const quantityInput = document.getElementById('item-quantity');
+
+            const name = nameInput.value.trim();
+            const quantity = parseInt(quantityInput.value, 10);
+
+            if (!name || isNaN(quantity) || quantity <= 0) {
+                return showMessage("Please enter a valid name and quantity (must be > 0).", 'error');
+            }
+
+            const inventoryRef = getInventoryCollectionRef();
+            if (!inventoryRef) return;
+
+            submitButton.disabled = true;
+            submitButton.textContent = 'Adding...';
+
+            try {
+                await addDoc(inventoryRef, {
+                    name: name,
+                    quantity: quantity,
+                    createdAt: Date.now()
+                });
+
+                nameInput.value = '';
+                quantityInput.value = '1';
+                showMessage(`Successfully added "${name}" to inventory!`);
+            } catch (error) {
+                console.error("Error adding document:", error);
+                showMessage(`Failed to add item: ${error.message}`, 'error');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Add Item';
+            }
+        };
+
+        /**
+         * Updates the quantity of an existing item.
+         * @param {string} docId - The Firestore document ID.
+         * @param {number} newQuantity - The new quantity value.
+         */
+        const updateItemQuantity = async (docId, newQuantity) => {
+            if (!isAuthReady) return showMessage("Authentication not ready.", 'error');
+
+            const newQ = parseInt(newQuantity, 10);
+            if (isNaN(newQ) || newQ < 0) {
+                return showMessage("Quantity must be 0 or greater.", 'error');
+            }
+
+            const inventoryRef = getInventoryCollectionRef();
+            if (!inventoryRef) return;
+
+            try {
+                const docRef = doc(inventoryRef, docId);
+                await updateDoc(docRef, {
+                    quantity: newQ
+                });
+            } catch (error) {
+                console.error("Error updating document:", error);
+                showMessage(`Failed to update item: ${error.message}`, 'error');
+            }
+        };
+
+        /**
+         * Deletes an item from the inventory.
+         * Note: The immediate deletion upon click is a necessary compromise to avoid the
+         * disallowed `confirm()` and `alert()` browser functions.
+         * @param {string} docId - The Firestore document ID.
+         * @param {string} itemName - The name of the item for the message.
+         */
+        const deleteItem = async (docId, itemName) => {
+            if (!isAuthReady) return showMessage("Authentication not ready.", 'error');
+
+            const inventoryRef = getInventoryCollectionRef();
+            if (!inventoryRef) return;
+
+            try {
+                const docRef = doc(inventoryRef, docId);
+                await deleteDoc(docRef);
+                showMessage(`Item "${itemName}" deleted successfully.`, 'success');
+            } catch (error) {
+                console.error("Error deleting document:", error);
+                showMessage(`Failed to delete item: ${error.message}`, 'error');
+            }
+        };
+
+        /**
+         * Sets up the real-time listener for the inventory collection.
+         */
+        const setupInventoryListener = () => {
+            if (!isAuthReady) return;
+
+            const inventoryRef = getInventoryCollectionRef();
+            if (!inventoryRef) return;
+
+            // Create a query: get all items, sorted by creation time (newest first for easier visibility)
+            // We fetch the full list, and then filter locally for the search function.
+            const q = query(inventoryRef, orderBy("createdAt", "desc"));
+
+            // Start listening for real-time changes
+            onSnapshot(q, (snapshot) => {
+                inventoryItems = []; // Clear and refill the global store
+                snapshot.forEach((doc) => {
+                    inventoryItems.push({ id: doc.id, ...doc.data() });
+                });
+                renderInventory(); // Call render with no arguments
+            }, (error) => {
+                console.error("Error setting up snapshot listener:", error);
+                inventoryListEl.innerHTML = `<p class="text-red-500">Error loading inventory: ${error.message}</p>`;
+            });
+        };
+
+        /**
+         * Renders the list of inventory items to the UI, applying local search filter.
+         */
+        const renderInventory = () => {
+            // Apply filtering logic based on the current search term
+            const filteredItems = inventoryItems.filter(item => 
+                item.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            inventoryListEl.innerHTML = ''; // Clear existing list
+            loadingMessageEl.classList.add('hidden');
+            itemCountEl.textContent = filteredItems.length; // Use filtered length
+
+            if (filteredItems.length === 0) {
+                // If the filtered list is empty, show a relevant message
+                if (searchTerm.length > 0) {
+                     inventoryListEl.innerHTML = `<p class="text-center text-gray-500 mt-4 p-4 border border-dashed rounded-lg">No items matching "${searchTerm}" found.</p>`;
+                     emptyMessageEl.classList.add('hidden');
+                } else {
+                    emptyMessageEl.classList.remove('hidden');
+                }
+                return;
+            }
+            emptyMessageEl.classList.add('hidden');
+
+            filteredItems.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.className = 'flex flex-col md:flex-row items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-sm transition hover:shadow-md';
+                itemEl.dataset.id = item.id;
+
+                const statusColor = item.quantity < 10 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700';
+
+                itemEl.innerHTML = `
+                    <div class="flex-grow mb-2 md:mb-0">
+                        <p class="text-lg font-semibold text-gray-800">${item.name}</p>
+                        <p class="text-sm text-gray-500">ID: <span class="font-mono text-xs">${item.id}</span></p>
+                    </div>
+                    
+                    <div class="flex items-center space-x-3 w-full md:w-auto justify-end">
+                        <span class="px-3 py-1 rounded-full text-xs font-bold ${statusColor}">Stock: ${item.quantity}</span>
+
+                        <div class="flex space-x-1">
+                            <button data-action="decrement" class="p-2 w-8 h-8 flex items-center justify-center bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition duration-150 font-bold">-</button>
+                            <input type="number" value="${item.quantity}" data-doc-id="${item.id}" class="w-16 p-1 border text-center rounded-lg text-sm focus:ring-indigo-500 focus:border-indigo-500" min="0" />
+                            <button data-action="increment" class="p-2 w-8 h-8 flex items-center justify-center bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition duration-150 font-bold">+</button>
+                        </div>
+                        
+                        <button data-action="delete" class="p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition duration-150" aria-label="Delete Item">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                `;
+
+                // Add event listeners for dynamic actions (Update/Delete)
+                const updateInput = itemEl.querySelector('input[type="number"]');
+                const deleteButton = itemEl.querySelector('[data-action="delete"]');
+                const incrementButton = itemEl.querySelector('[data-action="increment"]');
+                const decrementButton = itemEl.querySelector('[data-action="decrement"]');
+
+
+                // Event listener for manual input change
+                updateInput.addEventListener('change', (e) => {
+                    const newQuantity = parseInt(e.target.value, 10);
+                    if (newQuantity !== item.quantity) {
+                        updateItemQuantity(item.id, newQuantity);
+                    }
+                });
+
+                // Event listener for increment button
+                incrementButton.addEventListener('click', () => {
+                    updateItemQuantity(item.id, item.quantity + 1);
+                });
+
+                // Event listener for decrement button
+                decrementButton.addEventListener('click', () => {
+                    if (item.quantity > 0) {
+                        updateItemQuantity(item.id, item.quantity - 1);
+                    }
+                });
+
+                // Event listener for delete button
+                deleteButton.addEventListener('click', () => {
+                    deleteItem(item.id, item.name);
+                });
+
+                inventoryListEl.appendChild(itemEl);
+            });
+        };
+
+        // --- Event Listeners and Initial Call ---
+        addItemForm.addEventListener('submit', addItem);
+        googleSignInBtn.addEventListener('click', signInWithGoogle);
+        signOutBtn.addEventListener('click', signOutUser);
+        
+        // NEW: Search input listener
+        searchInputEl.addEventListener('input', (e) => {
+            searchTerm = e.target.value.trim();
+            renderInventory(); // Re-render the list with the new filter
+        });
+
+
+        // Start the application
+        window.onload = initializeFirebase;
+    </script>
+</body>
+</html>
